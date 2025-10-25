@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Real-time Stock Ticker</title>
+  <style>
+    :root{
+      --bg:#0f1724; --card:#0b1220; --accent:#06b6d4; --muted:#94a3b8; --glass: rgba(255,255,255,0.03);
+      --success:#10b981; --danger:#ef4444;
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      min-height:100vh;
+      background: linear-gradient(180deg,#07132a 0%, #071b1f 100%);
+      color:#e6eef6;
+      padding:20px;
+      -webkit-font-smoothing:antialiased;
+    }
+    .app{
+      max-width:1100px;
+      margin:0 auto;
+    }
+
+    header{
+      display:flex;
+      gap:16px;
+      align-items:center;
+      margin-bottom:18px;
+    }
+    header h1{
+      font-size:20px;
+      margin:0;
+      letter-spacing:0.2px;
+    }
+    header p{margin:0;color:var(--muted);font-size:13px}
+
+    /* Ticker bar */
+    .ticker-wrap{
+      background:linear-gradient(90deg, rgba(6,182,212,0.06), rgba(255,255,255,0.01));
+      border-radius:10px;
+      padding:8px 12px;
+      overflow:hidden;
+      box-shadow: 0 6px 20px rgba(3,7,18,0.6);
+      margin-bottom:18px;
+      display:flex;
+      align-items:center;
+    }
+    .ticker{
+      display:flex;
+      gap:24px;
+      align-items:center;
+      animation: scroll 18s linear infinite;
+      white-space:nowrap;
+    }
+    .ticker-item{
+      display:inline-flex;
+      gap:8px;
+      padding:6px 10px;
+      background:var(--glass);
+      border-radius:8px;
+      align-items:center;
+      min-width:120px;
+    }
+    .symbol{font-weight:700;margin-right:6px}
+    .price{font-weight:600}
+
+    @keyframes scroll{
+      0%{transform:translateX(0%)}
+      100%{transform:translateX(-50%)}
+    }
+
+    /* Controls + table */
+    .controls{
+      display:flex;
+      gap:12px;
+      margin-bottom:12px;
+      flex-wrap:wrap;
+    }
+    .controls input[type="text"]{
+      padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);
+      background:transparent;color:inherit;min-width:160px;
+    }
+    .controls button{
+      background:var(--accent);border:0;padding:10px 14px;border-radius:8px;color:#012127;font-weight:700;
+      cursor:pointer;
+    }
+    .controls .small{
+      background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted);padding:10px 12px;border-radius:8px;
+      cursor:pointer;
+    }
+
+    table{
+      width:100%;
+      border-collapse:collapse;
+      background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      border-radius:8px;
+      overflow:hidden;
+      box-shadow: 0 10px 30px rgba(2,6,23,0.55);
+    }
+    thead th{
+      text-align:left;padding:12px 16px;font-size:13px;color:var(--muted);
+      border-bottom:1px solid rgba(255,255,255,0.03);
+    }
+    tbody td{
+      padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.02);font-weight:600;
+    }
+    .change.pos{color:var(--success)}
+    .change.neg{color:var(--danger)}
+    .actions button{background:transparent;border:0;color:var(--muted);cursor:pointer}
+
+    /* sparkline */
+    canvas.spark{
+      width:120px;height:30px;
+      display:block;
+    }
+
+    /* responsive */
+    @media (max-width:720px){
+      .ticker{animation-duration:30s}
+      header{flex-direction:column;align-items:flex-start;gap:6px}
+      .controls{flex-direction:column;align-items:stretch}
+      .controls input[type="text"]{width:100%}
+    }
+
+    footer{margin-top:14px;color:var(--muted);font-size:13px}
+    .hint{color:var(--muted);font-size:13px;margin-top:8px}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1>Real-time Stock Ticker</h1>
+        <p>Vanilla HTML / CSS / JS — simulated real-time data. Replace simulation with live API below.</p>
+      </div>
+    </header>
+
+    <div class="ticker-wrap" aria-hidden="true">
+      <div class="ticker" id="ticker">
+        <!-- generated ticker items -->
+      </div>
+      <!-- duplicate for seamless scroll (JS will clone) -->
+    </div>
+
+    <div class="controls">
+      <input id="addSymbol" type="text" placeholder="Add symbol (e.g. AAPL)"/>
+      <button id="addBtn">Add</button>
+      <button class="small" id="useRealDataBtn">Use real API (optional)</button>
+      <button class="small" id="resetBtn">Reset demo</button>
+    </div>
+
+    <table aria-label="Stocks table">
+      <thead>
+        <tr>
+          <th>Symbol</th>
+          <th>Price</th>
+          <th>Change</th>
+          <th>Volume</th>
+          <th>Trend</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="stockBody">
+        <!-- rows injected -->
+      </tbody>
+    </table>
+
+    <div class="hint">
+      <!-- Tip: This demo uses a simulated random-walk price generator. To hook a real feed, click "Use real API" and follow the instructions shown in the browser console. -->
+    </div>
+
+    <footer>
+      <!-- Built with ♥ — edit the JS at the top of the file to integrate with a real WebSocket or REST provider. -->
+    </footer>
+  </div>
+
+<script>
+/*
+  Real-time Stock Ticker (vanilla JS)
+  - Default: simulated data (random walk)
+  - Can be wired to a real WebSocket / REST feed
+*/
+
+// --- Config ---
+const INITIAL_SYMBOLS = ['AAPL','MSFT','GOOGL','AMZN','TSLA','META','NFLX'];
+const UPDATE_INTERVAL_MS = 1200; // how often simulated updates happen
+let useRealAPI = false; // switch to true when integrating real feed
+
+// --- State ---
+const stocks = new Map(); // symbol -> {price,prev,volume,history:[]}
+const tickerEl = document.getElementById('ticker');
+const stockBody = document.getElementById('stockBody');
+
+// --- Utilities ---
+function fmtPrice(p){ return p.toFixed(2); }
+function fmtChange(curr,prev){
+  const diff = curr - prev;
+  const pct = prev ? (diff / prev) * 100 : 0;
+  return {diff, pct};
+}
+function randomBetween(a,b){ return a + Math.random()*(b-a); }
+
+// --- Initialize demo stocks with synthetic starting prices
+function setupInitialSymbols(symbols){
+  symbols.forEach(sym=>{
+    // seed price using a pseudo-random base (consistent-ish)
+    const base = 50 + Math.abs(hashCode(sym) % 300);
+    const p = base + randomBetween(-5,5);
+    addOrUpdateStock(sym, p, Math.floor(randomBetween(200000,2000000)), true);
+  });
+  renderTicker(); renderTable();
+}
+
+// simple string hash to produce repeatable seed
+function hashCode(s){
+  let h=0;
+  for(let i=0;i<s.length;i++) h = ((h<<5)-h) + s.charCodeAt(i) | 0;
+  return Math.abs(h);
+}
+
+// add or update stock state
+function addOrUpdateStock(symbol, price, volume, init=false){
+  symbol = symbol.toUpperCase();
+  const prevRecord = stocks.get(symbol);
+  if(!prevRecord){
+    stocks.set(symbol,{
+      symbol,
+      price,
+      prevPrice: price,
+      volume: volume||0,
+      history: [price],
+    });
+  } else {
+    prevRecord.prevPrice = prevRecord.price;
+    prevRecord.price = price;
+    prevRecord.volume = volume || prevRecord.volume + Math.floor(Math.random()*1000);
+    prevRecord.history.push(price);
+    if(prevRecord.history.length>40) prevRecord.history.shift();
+  }
+  if(!init){
+    renderTicker(); renderTable();
+  }
+}
+
+// Simulate price movement (random walk + occasional jump)
+function simulateUpdate(){
+  for(const [sym,rec] of stocks.entries()){
+    const volFactor = 1 + Math.random()*0.004;
+    // small random step
+    let next = rec.price * (1 + (Math.random()-0.5) * 0.01);
+    // occasional news jump
+    if(Math.random() < 0.01) next *= (1 + (Math.random()-0.5) * 0.2);
+    // clamp
+    next = Math.max(0.01, next);
+    const vol = rec.volume + Math.floor(Math.abs((next - rec.price) * 10000));
+    addOrUpdateStock(sym, next, vol, false);
+  }
+}
+
+// Render ticker bar items (duplicates for infinite scroll)
+function renderTicker(){
+  tickerEl.innerHTML = '';
+  const items = [];
+  for(const [sym,rec] of stocks.entries()){
+    const {price, prevPrice} = rec;
+    const cls = price>=prevPrice ? 'pos' : 'neg';
+    const item = document.createElement('div');
+    item.className = 'ticker-item';
+    item.innerHTML = `<div style="display:flex;flex-direction:column"><div class="symbol">${sym}</div><div class="price ${cls}">${fmtPrice(price)}</div></div>`;
+    items.push(item);
+    tickerEl.appendChild(item);
+  }
+  // duplicate for seamless scroll
+  items.forEach(node => tickerEl.appendChild(node.cloneNode(true)));
+}
+
+// render table rows
+function renderTable(){
+  stockBody.innerHTML = '';
+  for(const [sym,rec] of stocks.entries()){
+    const tr = document.createElement('tr');
+
+    // Symbol
+    const tdSym = document.createElement('td'); tdSym.textContent = sym;
+    // Price
+    const tdPrice = document.createElement('td'); tdPrice.textContent = fmtPrice(rec.price);
+    // Change
+    const {diff, pct} = fmtChange(rec.price, rec.prevPrice);
+    const tdChange = document.createElement('td');
+    tdChange.innerHTML = `${diff>=0?'+':''}${fmtPrice(diff)} (${diff?pct.toFixed(2):'0.00'}%)`;
+    tdChange.className = 'change ' + (diff>=0?'pos':'neg');
+    // Volume
+    const tdVol = document.createElement('td'); tdVol.textContent = rec.volume.toLocaleString();
+    // Trend (sparkline)
+    const tdTrend = document.createElement('td');
+    const canvas = document.createElement('canvas');
+    canvas.className = 'spark';
+    canvas.width = 120; canvas.height = 30;
+    drawSparkline(canvas, rec.history);
+    tdTrend.appendChild(canvas);
+
+    // Actions
+    const tdAct = document.createElement('td'); tdAct.className = 'actions';
+    const removeBtn = document.createElement('button');
+    removeBtn.textContent = 'Remove';
+    removeBtn.onclick = ()=>{ stocks.delete(sym); renderTicker(); renderTable(); };
+    tdAct.appendChild(removeBtn);
+
+    tr.appendChild(tdSym);
+    tr.appendChild(tdPrice);
+    tr.appendChild(tdChange);
+    tr.appendChild(tdVol);
+    tr.appendChild(tdTrend);
+    tr.appendChild(tdAct);
+
+    stockBody.appendChild(tr);
+  }
+}
+
+// draw minimal sparkline (no external libs)
+function drawSparkline(canvas, arr){
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  if(!arr || arr.length===0) return;
+  const w = canvas.width, h = canvas.height, pad = 4;
+  const min = Math.min(...arr), max = Math.max(...arr);
+  const range = max - min || 1;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for(let i=0;i<arr.length;i++){
+    const x = pad + (i/(arr.length-1 || 1))*(w - pad*2);
+    const y = pad + (1 - (arr[i]-min)/range)*(h - pad*2);
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  // stroke
+  ctx.strokeStyle = '#c6f6ff';
+  ctx.stroke();
+
+  // last dot colored green/red
+  const last = arr[arr.length-1], prev = arr[arr.length-2] || last;
+  ctx.beginPath();
+  const lx = pad + ((arr.length-1)/(arr.length-1||1))*(w - pad*2);
+  const ly = pad + (1 - (last-min)/range)*(h - pad*2);
+  ctx.arc(lx,ly,2.6,0,Math.PI*2);
+  ctx.fillStyle = last>=prev ? '#10b981' : '#ef4444';
+  ctx.fill();
+}
+
+// add symbol input handler
+document.getElementById('addBtn').addEventListener('click', ()=>{
+  const v = document.getElementById('addSymbol').value.trim().toUpperCase();
+  if(!v) return;
+  if(stocks.has(v)){ alert('Symbol already added'); return; }
+  // seed price based on symbol
+  const base = 40 + Math.abs(hashCode(v)%200);
+  addOrUpdateStock(v, base + randomBetween(-3,3), Math.floor(randomBetween(50000,600000)), false);
+  document.getElementById('addSymbol').value = '';
+});
+
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  stocks.clear();
+  setupInitialSymbols(INITIAL_SYMBOLS);
+});
+
+document.getElementById('useRealDataBtn').addEventListener('click', ()=>{
+  // Toggle or show instructions
+  if(useRealAPI){
+    alert('Already set to use real API (refer to console instructions).');
+  } else {
+    alert('To connect to a real feed you will need a provider and API key. Open the browser console for sample integration code and instructions.');
+    console.log('%cReal API Integration Instructions:', 'color: #9be7ff; font-weight:700; font-size:14px');
+    console.log('%c1) Choose a provider with streaming or REST APIs. Examples: Finnhub, IEX Cloud, Alpaca, Polygon.', 'color:#cfefff');
+    console.log('%c2) Get an API key from provider and read their docs for WebSocket or REST endpoints.', 'color:#cfefff');
+    console.log('%c3) Replace the "simulateUpdate" interval with your real WebSocket handlers. See sample below.', 'color:#cfefff');
+    console.log('--- SAMPLE (Finnhub WebSocket) ----');
+    console.log(`// const socket = new WebSocket('wss://ws.finnhub.io?token=YOUR_API_KEY');
+socket.onopen = ()=> socket.send(JSON.stringify({type:'subscribe',symbol:'AAPL'}));
+socket.onmessage = (evt)=> {
+  const data = JSON.parse(evt.data);
+  // parse data and call addOrUpdateStock(symbol, price, volume)
+};`);
+    useRealAPI = true;
+  }
+});
+
+// --- Simulation loop ---
+setupInitialSymbols(INITIAL_SYMBOLS);
+setInterval(()=> {
+  if(!useRealAPI) simulateUpdate();
+  // if using real API you'd instead process incoming messages and call addOrUpdateStock
+}, UPDATE_INTERVAL_MS);
+
+// Small UX: pause ticker on hover
+tickerEl.addEventListener('mouseenter', ()=> { tickerEl.style.animationPlayState='paused'; });
+tickerEl.addEventListener('mouseleave', ()=> { tickerEl.style.animationPlayState='running'; });
+
+</script>
+</body>
+</html>
